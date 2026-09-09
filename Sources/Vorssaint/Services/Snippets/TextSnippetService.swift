@@ -27,7 +27,7 @@ final class TextSnippetService {
     private var activationObserver: NSObjectProtocol?
     private let inputLock = NSLock()
     private var buffer = ""
-    private var pendingConsumedDelimiterKeyCode: Int?
+    private var pendingConsumedDelimiterKeyUp: TextSnippetSupport.PendingKeyUp?
     private var libraryVisible = false
     private var commandBarVisible = false
     /// Split by expansion mode at load time; the tap callback only scans.
@@ -131,7 +131,7 @@ final class TextSnippetService {
         }
         inputLock.withLock {
             buffer = ""
-            pendingConsumedDelimiterKeyCode = nil
+            pendingConsumedDelimiterKeyUp = nil
         }
     }
 
@@ -257,9 +257,10 @@ final class TextSnippetService {
             let decision = inputLock.withLock {
                 let decision = TextSnippetSupport.pendingKeyUpDecision(
                     keyCode: keyCode,
-                    pendingKeyCode: pendingConsumedDelimiterKeyCode
+                    pending: pendingConsumedDelimiterKeyUp,
+                    now: ProcessInfo.processInfo.systemUptime
                 )
-                pendingConsumedDelimiterKeyCode = decision.pendingKeyCode
+                pendingConsumedDelimiterKeyUp = decision.pending
                 return decision
             }
             return decision.consume ? nil : Unmanaged.passUnretained(event)
@@ -390,7 +391,10 @@ final class TextSnippetService {
             )
             if accepted, let trailingKeyCode, insertion.caretRetreat != nil {
                 self.inputLock.withLock {
-                    self.pendingConsumedDelimiterKeyCode = Int(trailingKeyCode)
+                    self.pendingConsumedDelimiterKeyUp = .init(
+                        keyCode: Int(trailingKeyCode),
+                        armedAt: ProcessInfo.processInfo.systemUptime
+                    )
                 }
             }
             return accepted
@@ -439,7 +443,13 @@ final class TextSnippetService {
                 willPostShortcut: {
                     for _ in 0..<deleteCount { postKey(CGKeyCode(kVK_Delete)) }
                 },
-                didPostShortcut: postCaretRetreat,
+                didPostShortcut: {
+                    guard let delay = TextSnippetSupport.pasteCaretRetreatDelay(
+                        caretRetreat: caretRetreat
+                    ) else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay,
+                                                  execute: postCaretRetreat)
+                },
                 didFail: {
                     if let failureKeyCode { postKey(failureKeyCode, flags: failureFlags) }
                 }

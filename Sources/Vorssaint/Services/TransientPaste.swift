@@ -12,7 +12,6 @@ import CoreGraphics
 final class TransientPaste {
     static let shared = TransientPaste()
 
-    private static let postShortcutSettleDelay: TimeInterval = 0.15
     private static let restoreDelay: TimeInterval = 0.5
 
     private var pendingRestore: (snapshot: [NSPasteboardItem], changeCount: Int)?
@@ -169,11 +168,7 @@ final class TransientPaste {
         keyDown.post(tap: .cghidEventTap)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
             keyUp.post(tap: .cghidEventTap)
-            // Some targets consume paste asynchronously; follow-up keys must
-            // wait until the inserted text has reached their editor.
-            DispatchQueue.main.asyncAfter(deadline: .now() + postShortcutSettleDelay) {
-                completion(true)
-            }
+            completion(true)
         }
     }
 }

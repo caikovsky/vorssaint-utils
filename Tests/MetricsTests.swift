@@ -16523,16 +16523,20 @@ struct MetricsTests {
                && !TextSnippetSupport.keepsTriggeringDelimiter(caretRetreat: 0)
                && !TextSnippetSupport.keepsTriggeringDelimiter(caretRetreat: 5),
                "only cursor placement suppresses the triggering delimiter")
+        let pendingReturn = TextSnippetSupport.PendingKeyUp(keyCode: kVK_Return, armedAt: 10)
         let unrelatedKeyUp = TextSnippetSupport.pendingKeyUpDecision(
-            keyCode: kVK_Tab, pendingKeyCode: kVK_Return)
+            keyCode: kVK_Tab, pending: pendingReturn, now: 10.5)
         let matchingKeyUp = TextSnippetSupport.pendingKeyUpDecision(
-            keyCode: kVK_Return, pendingKeyCode: unrelatedKeyUp.pendingKeyCode)
+            keyCode: kVK_Return, pending: unrelatedKeyUp.pending, now: 10.6)
         let repeatedKeyUp = TextSnippetSupport.pendingKeyUpDecision(
-            keyCode: kVK_Return, pendingKeyCode: matchingKeyUp.pendingKeyCode)
-        expect(!unrelatedKeyUp.consume && unrelatedKeyUp.pendingKeyCode == kVK_Return
-               && matchingKeyUp.consume && matchingKeyUp.pendingKeyCode == nil
-               && !repeatedKeyUp.consume && repeatedKeyUp.pendingKeyCode == nil,
-               "a pending delimiter consumes exactly its matching key-up")
+            keyCode: kVK_Return, pending: matchingKeyUp.pending, now: 10.7)
+        let expiredKeyUp = TextSnippetSupport.pendingKeyUpDecision(
+            keyCode: kVK_Return, pending: pendingReturn, now: 11.1)
+        expect(!unrelatedKeyUp.consume && unrelatedKeyUp.pending == pendingReturn
+               && matchingKeyUp.consume && matchingKeyUp.pending == nil
+               && !repeatedKeyUp.consume && repeatedKeyUp.pending == nil
+               && !expiredKeyUp.consume && expiredKeyUp.pending == nil,
+               "a pending delimiter consumes one timely match and expires before a later key-up")
 
         // Only a replacement that names the clipboard pays for reading it: the
         // pasteboard can hang on content nobody renders any more, and that read
@@ -16554,21 +16558,10 @@ struct MetricsTests {
                && TextSnippetSupport.pastePayload(text: "first\nsecond", trailingText: " ")
                 == "first\nsecond ",
                "multi-line snippets keep their delimiter in the same ordered paste")
-        let transientPasteSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/TransientPaste.swift",
-            encoding: .utf8)) ?? ""
-        let pasteCompletionSettles: Bool
-        if let keyUp = transientPasteSource.range(of: "keyUp.post(tap: .cghidEventTap)"),
-           let settle = transientPasteSource.range(
-               of: "DispatchQueue.main.asyncAfter(deadline: .now() + postShortcutSettleDelay)"),
-           let completion = transientPasteSource.range(of: "completion(true)") {
-            pasteCompletionSettles = keyUp.upperBound <= settle.lowerBound
-                && settle.upperBound <= completion.lowerBound
-        } else {
-            pasteCompletionSettles = false
-        }
-        expect(pasteCompletionSettles,
-               "transient paste settles before posting completion events")
+        expect(TextSnippetSupport.pasteCaretRetreatDelay(caretRetreat: nil) == nil
+               && TextSnippetSupport.pasteCaretRetreatDelay(caretRetreat: 0) == 0.15
+               && TextSnippetSupport.pasteCaretRetreatDelay(caretRetreat: 5) == 0.15,
+               "only pasted cursor placement waits before moving the caret")
 
         // Custom date patterns after a colon (issue #348)
         let enUS = Locale(identifier: "en_US")

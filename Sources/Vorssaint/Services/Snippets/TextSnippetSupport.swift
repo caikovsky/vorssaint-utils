@@ -55,6 +55,11 @@ extension TextSnippet {
 /// matching and variable expansion, all deterministic and injectable so the
 /// harness can pin the behavior down.
 enum TextSnippetSupport {
+    struct PendingKeyUp: Equatable {
+        let keyCode: Int
+        let armedAt: TimeInterval
+    }
+
     /// Keystrokes the buffer remembers; longer triggers cannot match.
     static let bufferLimit = 64
     static let maxTriggerLength = 40
@@ -125,11 +130,17 @@ enum TextSnippetSupport {
         caretRetreat == nil
     }
 
+    static func pasteCaretRetreatDelay(caretRetreat: Int?) -> TimeInterval? {
+        caretRetreat == nil ? nil : 0.15
+    }
+
     static func pendingKeyUpDecision(
         keyCode: Int,
-        pendingKeyCode: Int?
-    ) -> (consume: Bool, pendingKeyCode: Int?) {
-        guard pendingKeyCode == keyCode else { return (false, pendingKeyCode) }
+        pending: PendingKeyUp?,
+        now: TimeInterval
+    ) -> (consume: Bool, pending: PendingKeyUp?) {
+        guard let pending, now - pending.armedAt <= 1 else { return (false, nil) }
+        guard pending.keyCode == keyCode else { return (false, pending) }
         return (true, nil)
     }
 
